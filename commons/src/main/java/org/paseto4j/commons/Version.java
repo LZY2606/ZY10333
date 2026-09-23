@@ -1,0 +1,23 @@
+/*
+ * SPDX-FileCopyrightText: Copyright © 2025 Nanne Baars
+ * SPDX-License-Identifier: MIT
+ */
+package org.paseto4j.commons;
+
+public enum Version {
+  V1("v1"),
+  V2("v2"),
+  V3("v3"),
+  V4("v4");
+
+  private final String name;
+
+  Version(String name) {
+    this.name = name;
+  }
+
+  @Override
+  public String toString() {
+    return name;
+  }
+}
