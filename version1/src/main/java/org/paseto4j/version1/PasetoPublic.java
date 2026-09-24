@@ -5,7 +5,6 @@
 package org.paseto4j.version1;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Base64.getUrlDecoder;
 import static java.util.Objects.requireNonNull;
 import static org.paseto4j.commons.Purpose.PURPOSE_PUBLIC;
 import static org.paseto4j.commons.Version.V1;
@@ -15,9 +14,12 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import org.paseto4j.commons.ByteUtils;
+import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
-import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.TokenValidator;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoPublic {
 
@@ -54,24 +56,39 @@ class PasetoPublic {
    */
   static String parse(RSAPublicKey publicKey, String signedMessage, String footer)
       throws SignatureException {
+    return parse(publicKey, signedMessage, ValidationPolicy.legacy(footer));
+  }
+
+  /**
+   * Verify the token after applying the given validation policy. All policy checks run before
+   * any cryptographic operation.
+   */
+  public static String parse(RSAPublicKey publicKey, String signedMessage, ValidationPolicy policy)
+      throws SignatureException {
     requireNonNull(publicKey);
     requireNonNull(signedMessage);
+    requireNonNull(policy);
 
     // 1 & 2
-    Token token = new Token(signedMessage, V1, PURPOSE_PUBLIC, footer);
+    ValidatedToken token = TokenValidator.parse(signedMessage, V1, PURPOSE_PUBLIC, policy, "");
 
     // 3
-    byte[] sm = getUrlDecoder().decode(token.getPayload());
+    byte[] sm = token.payload();
+    if (sm.length < 256) {
+      throw new PasetoException("Invalid token payload");
+    }
     byte[] signature = Arrays.copyOfRange(sm, sm.length - 256, sm.length);
     byte[] message = Arrays.copyOfRange(sm, 0, sm.length - 256);
 
     // 4
-    byte[] m2 = PreAuthenticationEncoder.encode(token.header(), message, footer.getBytes(UTF_8));
+    byte[] m2 = PreAuthenticationEncoder.encode(token.header(), message, token.footer());
 
     // 5
     verifySignature(publicKey, m2, signature);
 
-    return new String(message, UTF_8);
+    String payload = new String(message, UTF_8);
+    TokenValidator.validateClaims(payload, policy);
+    return payload;
   }
 
   private static void verifySignature(RSAPublicKey key, byte[] m2, byte[] signature)

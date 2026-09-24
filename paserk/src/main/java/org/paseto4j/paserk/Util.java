@@ -6,14 +6,16 @@ package org.paseto4j.paserk;
 
 import java.nio.ByteBuffer;
 import java.util.Base64;
-import java.util.regex.Pattern;
 import java.util.Arrays;
+import org.paseto4j.commons.Base64Url;
 import org.paseto4j.commons.ByteUtils;
+import org.paseto4j.commons.PasetoException;
+import org.paseto4j.commons.TokenValidator;
+import org.paseto4j.commons.ValidationPolicy;
+import org.paseto4j.commons.Version;
 
 /** Shared encoding and validation helpers for PASERK implementations. */
 public final class Util {
-
-  private static final Pattern BASE64URL = Pattern.compile("[A-Za-z0-9_-]*");
 
   private Util() {}
 
@@ -23,21 +25,24 @@ public final class Util {
 
   /** Decodes canonical, unpadded RFC 4648 base64url. */
   public static byte[] decode(String encoded) {
-    if (encoded == null || encoded.indexOf('=') >= 0 || !BASE64URL.matcher(encoded).matches()) {
-      throw new PaserkException("Invalid base64url encoding");
-    }
-    if ((encoded.length() & 3) == 1) {
-      throw new PaserkException("Invalid base64url encoding");
-    }
     try {
-      byte[] decoded = Base64.getUrlDecoder().decode(encoded);
-      if (!encode(decoded).equals(encoded)) {
-        throw new PaserkException("Non-canonical base64url encoding");
-      }
-      return decoded;
-    } catch (IllegalArgumentException e) {
-      throw new PaserkException("Invalid base64url encoding", e);
+      return Base64Url.decode(encoded);
+    } catch (PasetoException e) {
+      throw new PaserkException(e.getMessage(), e);
     }
+  }
+
+  /**
+   * Extracts the payload of a PASERK after applying the applicable stages of the given
+   * validation policy (allowed version, total and payload segment length). Runs before any
+   * cryptographic operation.
+   */
+  public static String payload(String paserk, String expectedHeader, ValidationPolicy policy) {
+    String payload = payload(paserk, expectedHeader);
+    Version version = PaserkVersion.parse(expectedHeader.substring(0, expectedHeader.indexOf('.')));
+    TokenValidator.requireVersionAllowed(version, policy);
+    TokenValidator.requireLengthWithinLimits(paserk.length(), payload.length(), 0, policy);
+    return payload;
   }
 
   public static String payload(String paserk, String expectedHeader) {

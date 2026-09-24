@@ -9,6 +9,7 @@ import java.security.interfaces.EdECPrivateKey;
 import java.security.interfaces.EdECPublicKey;
 
 import org.paseto4j.commons.SecretKey;
+import org.paseto4j.commons.ValidationPolicy;
 
 public class Paseto {
 
@@ -44,6 +45,21 @@ public class Paseto {
   public static String decrypt(
       SecretKey key, String signedMessage, String footer, String implicitAssertion) {
     return PasetoLocal.decrypt(key, signedMessage, footer, implicitAssertion);
+  }
+
+  /**
+   * Decrypt the token after applying the given validation policy.
+   */
+  public static String decrypt(SecretKey key, String signedMessage, ValidationPolicy policy) {
+    return PasetoLocal.decrypt(key, signedMessage, policy, "");
+  }
+
+  /**
+   * Decrypt the token after applying the given validation policy.
+   */
+  public static String decrypt(
+      SecretKey key, String signedMessage, ValidationPolicy policy, String implicitAssertion) {
+    return PasetoLocal.decrypt(key, signedMessage, policy, implicitAssertion);
   }
 
   /**
@@ -97,5 +113,22 @@ public class Paseto {
       EdECPublicKey publicKey, String signedMessage, String footer, String implicitAssertion)
       throws SignatureException {
     return PasetoPublic.parse(publicKey, signedMessage, footer, implicitAssertion);
+  }
+
+  /**
+   * Verify the token after applying the given validation policy.
+   */
+  public static String parse(EdECPublicKey publicKey, String signedMessage, ValidationPolicy policy)
+      throws SignatureException {
+    return PasetoPublic.parse(publicKey, signedMessage, policy, "");
+  }
+
+  /**
+   * Verify the token after applying the given validation policy.
+   */
+  public static String parse(
+      EdECPublicKey publicKey, String signedMessage, ValidationPolicy policy, String implicitAssertion)
+      throws SignatureException {
+    return PasetoPublic.parse(publicKey, signedMessage, policy, implicitAssertion);
   }
 }

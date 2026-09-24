@@ -14,13 +14,14 @@ import com.goterl.lazysodium.LazySodiumJava;
 import com.goterl.lazysodium.SodiumJava;
 import com.goterl.lazysodium.interfaces.AEAD;
 import java.util.Arrays;
-import java.util.Base64;
 
 import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.SecretKey;
-import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.TokenValidator;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoLocal {
 
@@ -81,21 +82,33 @@ class PasetoLocal {
   }
 
   static String decrypt(SecretKey key, String token, String footer) {
+    return decrypt(key, token, ValidationPolicy.legacy(footer));
+  }
+
+  /**
+   * Decrypt the token after applying the given validation policy. All policy checks run before
+   * any cryptographic operation.
+   */
+  public static String decrypt(SecretKey key, String token, ValidationPolicy policy) {
     requireNonNull(key);
     requireNonNull(token);
+    requireNonNull(policy);
 
     // 1 and 2
-    Token pasetoToken = new Token(token, V2, PURPOSE_LOCAL, footer);
+    ValidatedToken pasetoToken = TokenValidator.parse(token, V2, PURPOSE_LOCAL, policy, "");
 
     // 3
-    byte[] ct = Base64.getUrlDecoder().decode(pasetoToken.getPayload());
+    byte[] ct = pasetoToken.payload();
+    if (ct.length < AEAD.XCHACHA20POLY1305_IETF_NPUBBYTES + AEAD.XCHACHA20POLY1305_IETF_ABYTES) {
+      throw new PasetoException("Invalid token payload");
+    }
     byte[] nonce = Arrays.copyOfRange(ct, 0, AEAD.XCHACHA20POLY1305_IETF_NPUBBYTES);
     byte[] encryptedMessage =
         Arrays.copyOfRange(ct, AEAD.XCHACHA20POLY1305_IETF_NPUBBYTES, ct.length);
 
     // 4
     byte[] preAuth =
-        PreAuthenticationEncoder.encode(pasetoToken.header(), nonce, footer.getBytes(UTF_8));
+        PreAuthenticationEncoder.encode(pasetoToken.header(), nonce, pasetoToken.footer());
 
     // 5 - XChaCha20Poly1305 decryption using Lazysodium
     byte[] message = new byte[encryptedMessage.length - AEAD.XCHACHA20POLY1305_IETF_ABYTES];
@@ -117,6 +130,8 @@ class PasetoLocal {
       throw new PasetoException("Unable to decrypt the token");
     }
 
-    return new String(message, 0, (int) messageLen[0], UTF_8);
+    String payload = new String(message, 0, (int) messageLen[0], UTF_8);
+    TokenValidator.validateClaims(payload, policy);
+    return payload;
   }
 }

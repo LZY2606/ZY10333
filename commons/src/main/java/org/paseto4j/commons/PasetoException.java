@@ -9,4 +9,8 @@ public class PasetoException extends RuntimeException {
   public PasetoException(String errorMessage) {
     super(errorMessage);
   }
+
+  public PasetoException(String errorMessage, Throwable cause) {
+    super(errorMessage, cause);
+  }
 }

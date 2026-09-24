@@ -7,6 +7,7 @@ package org.paseto4j.paserk.version3;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import org.paseto4j.commons.SecretKey;
+import org.paseto4j.commons.ValidationPolicy;
 import org.paseto4j.commons.Version;
 import org.paseto4j.paserk.Util;
 import org.paseto4j.paserk.WrappingKey;
@@ -59,12 +60,33 @@ public final class Paserk {
     }
   }
 
+  /**
+   * Decodes a {@code k3.local} PASERK after applying the applicable stages of the given
+   * validation policy (allowed version, length limits).
+   */
+  public static SecretKey decodeLocal(String paserk, ValidationPolicy policy) {
+    byte[] raw = LOCAL.decode(paserk, policy);
+    try {
+      return SecretKey.fromBytes(raw);
+    } finally {
+      Util.wipe(raw);
+    }
+  }
+
   public static String encodePublicKey(ECPublicKey key) {
     return PUBLIC.encode(KeyEncoding.encodeV3Public(key));
   }
 
   public static ECPublicKey decodePublicKey(String paserk) {
     return KeyEncoding.decodeV3Public(PUBLIC.decode(paserk));
+  }
+
+  /**
+   * Decodes a {@code k3.public} PASERK after applying the applicable stages of the given
+   * validation policy (allowed version, length limits).
+   */
+  public static ECPublicKey decodePublicKey(String paserk, ValidationPolicy policy) {
+    return KeyEncoding.decodeV3Public(PUBLIC.decode(paserk, policy));
   }
 
   public static String encodeSecretKey(ECPrivateKey key) {
@@ -78,6 +100,19 @@ public final class Paserk {
 
   public static ECPrivateKey decodeSecretKey(String paserk) {
     byte[] raw = SECRET.decode(paserk);
+    try {
+      return KeyEncoding.decodeV3Secret(raw);
+    } finally {
+      Util.wipe(raw);
+    }
+  }
+
+  /**
+   * Decodes a {@code k3.secret} PASERK after applying the applicable stages of the given
+   * validation policy (allowed version, length limits).
+   */
+  public static ECPrivateKey decodeSecretKey(String paserk, ValidationPolicy policy) {
+    byte[] raw = SECRET.decode(paserk, policy);
     try {
       return KeyEncoding.decodeV3Secret(raw);
     } finally {

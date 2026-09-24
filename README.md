@@ -138,6 +138,43 @@ from `org.paseto4j.paserk.version3.Paserk`.
 
 For usage see the `examples` project which shows how to use Paseto4j in action.
 
+## Validation policy
+
+Callers that need uniform checks before decrypting or verifying a token can use the immutable,
+thread-safe `ValidationPolicy` (in `paseto4j-commons`). All structural and policy checks run
+before any cryptographic operation; claim checks run only after successful authentication:
+
+```java
+import org.paseto4j.commons.ValidationPolicy;
+import org.paseto4j.commons.Version;
+import org.paseto4j.commons.Purpose;
+
+ValidationPolicy policy =
+    ValidationPolicy.builder()
+        .allowVersions(Version.V4)
+        .allowPurposes(Purpose.PURPOSE_LOCAL)
+        .maxTokenLength(4096)
+        .expectFooter("{\"kid\":\"...\"}") // or requireNoFooter() / footerMatching(predicate)
+        .requireImplicitAssertion() // v3 and v4 only
+        .clock(clock, Duration.ofMinutes(1)) // validates exp, nbf and iat with allowed skew
+        .requireClaims("iss")
+        .expectClaim("iss", "my-service")
+        .build();
+
+String payload = org.paseto4j.version4.Paseto.decrypt(key, token, policy, implicitAssertion);
+```
+
+Every `Paseto.decrypt`/`Paseto.parse` entry point of v1-v4 and the PASERK `decode*` methods of
+`k3`/`k4` have an overload accepting a policy. The legacy entry points are unchanged and behave
+as before (`ValidationPolicy.legacy(footer)` reproduces their exact footer semantics).
+
+A policy rejection throws `PolicyViolationException` (a `PasetoException`) carrying a stable
+machine-readable code (`getCode()`), the failing stage (`getStage()`) and a safe summary that
+never contains key material, plaintext payloads or token contents. Authentication failures
+(wrong key, invalid signature) are not policy rejections and keep their existing exception
+types. Token segments must be canonical base64url; an empty footer segment is rejected since an
+empty footer is encoded as no segment at all.
+
 # Differences with other Java Paseto implementations
 
 Why use this library over the other Java implementations?

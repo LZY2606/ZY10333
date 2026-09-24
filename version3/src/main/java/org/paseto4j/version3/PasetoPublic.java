@@ -5,7 +5,6 @@
 package org.paseto4j.version3;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Base64.getUrlDecoder;
 import static java.util.Objects.requireNonNull;
 import static org.paseto4j.commons.Conditions.verify;
 import static org.paseto4j.commons.Purpose.PURPOSE_PUBLIC;
@@ -21,9 +20,12 @@ import org.bouncycastle.asn1.x9.X9ECParameters;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.math.ec.ECPoint;
 import org.paseto4j.commons.ByteUtils;
+import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
-import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.TokenValidator;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoPublic {
 
@@ -74,14 +76,29 @@ class PasetoPublic {
   static String parse(
       ECPublicKey publicKey, String signedMessage, String footer, String implicitAssertion)
       throws SignatureException {
+    return parse(publicKey, signedMessage, ValidationPolicy.legacy(footer), implicitAssertion);
+  }
+
+  /**
+   * Verify the token after applying the given validation policy. All policy checks run before
+   * any cryptographic operation.
+   */
+  public static String parse(
+      ECPublicKey publicKey, String signedMessage, ValidationPolicy policy, String implicitAssertion)
+      throws SignatureException {
     requireNonNull(publicKey);
     requireNonNull(signedMessage);
+    requireNonNull(policy);
 
     // 1 and 2
-    Token token = new Token(signedMessage, V3, PURPOSE_PUBLIC, footer);
+    ValidatedToken token =
+        TokenValidator.parse(signedMessage, V3, PURPOSE_PUBLIC, policy, implicitAssertion);
 
     // 3
-    byte[] sm = getUrlDecoder().decode(token.getPayload());
+    byte[] sm = token.payload();
+    if (sm.length < 96) {
+      throw new PasetoException("Invalid token payload");
+    }
     byte[] signature = Arrays.copyOfRange(sm, sm.length - 96, sm.length);
     byte[] message = Arrays.copyOfRange(sm, 0, sm.length - 96);
 
@@ -89,12 +106,14 @@ class PasetoPublic {
     byte[] pk = toCompressed(publicKey);
     byte[] m2 =
         PreAuthenticationEncoder.encode(
-            pk, token.header(), message, footer.getBytes(UTF_8), implicitAssertion.getBytes(UTF_8));
+            pk, token.header(), message, token.footer(), implicitAssertion.getBytes(UTF_8));
 
     // 5
     verifySignature(publicKey, m2, signature);
 
-    return new String(message, UTF_8);
+    String payload = new String(message, UTF_8);
+    TokenValidator.validateClaims(payload, policy);
+    return payload;
   }
 
   private static void verifySignature(ECPublicKey key, byte[] m2, byte[] signature)

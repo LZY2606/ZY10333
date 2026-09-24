@@ -5,6 +5,7 @@
 package org.paseto4j.paserk.types;
 
 import org.paseto4j.commons.Version;
+import org.paseto4j.commons.ValidationPolicy;
 import org.paseto4j.paserk.PaserkException;
 import org.paseto4j.paserk.PaserkType;
 import org.paseto4j.paserk.PaserkVersion;
@@ -23,6 +24,16 @@ public final class Local implements PaserkType {
   @Override
   public byte[] decode(String paserk) {
     byte[] key = Util.decode(Util.payload(paserk, header()));
+    requireLength(key);
+    return key;
+  }
+
+  /**
+   * Decodes after applying the applicable stages of the given validation policy (version and
+   * length limits), before any key material is processed.
+   */
+  public byte[] decode(String paserk, ValidationPolicy policy) {
+    byte[] key = Util.decode(Util.payload(paserk, header(), policy));
     requireLength(key);
     return key;
   }

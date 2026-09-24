@@ -9,6 +9,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 
 import org.paseto4j.commons.SecretKey;
+import org.paseto4j.commons.ValidationPolicy;
 
 public class Paseto {
 
@@ -31,6 +32,13 @@ public class Paseto {
   }
 
   /**
+   * Decrypt the token after applying the given validation policy.
+   */
+  public static String decrypt(SecretKey key, String signedMessage, ValidationPolicy policy) {
+    return PasetoLocal.decrypt(key, signedMessage, policy);
+  }
+
+  /**
    * <a
    * href="https://github.com/paseto-standard/paseto-spec/blob/master/docs/01-Protocol-Versions/Version1.md#sign">sign</a>
    */
@@ -45,5 +53,13 @@ public class Paseto {
   public static String parse(RSAPublicKey publicKey, String signedMessage, String footer)
       throws SignatureException {
     return PasetoPublic.parse(publicKey, signedMessage, footer);
+  }
+
+  /**
+   * Verify the token after applying the given validation policy.
+   */
+  public static String parse(RSAPublicKey publicKey, String signedMessage, ValidationPolicy policy)
+      throws SignatureException {
+    return PasetoPublic.parse(publicKey, signedMessage, policy);
   }
 }

@@ -5,7 +5,6 @@
 package org.paseto4j.version4;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Base64.getUrlDecoder;
 import static java.util.Objects.requireNonNull;
 import static org.paseto4j.commons.ByteUtils.concat;
 import static org.paseto4j.commons.ByteUtils.wipe;
@@ -15,10 +14,13 @@ import static org.paseto4j.commons.Version.V4;
 
 import java.security.MessageDigest;
 import java.util.Arrays;
+import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.SecretKey;
-import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.TokenValidator;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationPolicy;
 
 public class PasetoLocal {
   private PasetoLocal() {}
@@ -75,13 +77,27 @@ public class PasetoLocal {
    * href="https://github.com/paseto-standard/paseto-spec/blob/master/docs/01-Protocol-Versions/Version4.md#decrypt">decrypt</a>
    */
   static String decrypt(SecretKey key, String token, String footer, String implicitAssertion) {
+    return decrypt(key, token, ValidationPolicy.legacy(footer), implicitAssertion);
+  }
+
+  /**
+   * Decrypt the token after applying the given validation policy. All policy checks run before
+   * any cryptographic operation.
+   */
+  public static String decrypt(
+      SecretKey key, String token, ValidationPolicy policy, String implicitAssertion) {
     requireNonNull(key);
     requireNonNull(token);
+    requireNonNull(policy);
 
-    Token pasetoToken = new Token(token, V4, PURPOSE_LOCAL, footer);
+    ValidatedToken pasetoToken =
+        TokenValidator.parse(token, V4, PURPOSE_LOCAL, policy, implicitAssertion);
 
     // 4
-    byte[] nct = getUrlDecoder().decode(pasetoToken.getPayload());
+    byte[] nct = pasetoToken.payload();
+    if (nct.length < 32 + 32) {
+      throw new PasetoException("Invalid token payload");
+    }
     byte[] nonce = Arrays.copyOfRange(nct, 0, 32);
     byte[] t = Arrays.copyOfRange(nct, nct.length - 32, nct.length);
     byte[] c = Arrays.copyOfRange(nct, 32, nct.length - 32);
@@ -99,7 +115,7 @@ public class PasetoLocal {
               pasetoToken.header(),
               nonce,
               c,
-              footer.getBytes(UTF_8),
+              pasetoToken.footer(),
               implicitAssertion.getBytes(UTF_8));
 
       // 7
@@ -111,7 +127,9 @@ public class PasetoLocal {
       }
 
       message = CryptoFunctions.xchacha20(c, n2, ek);
-      return new String(message, UTF_8);
+      String payload = new String(message, UTF_8);
+      TokenValidator.validateClaims(payload, policy);
+      return payload;
     } finally {
       wipe(tmp, ek, n2, ak, message);
     }
