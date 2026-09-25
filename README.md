@@ -134,6 +134,38 @@ The module supports `local`, `public`, `secret`, `lid`, `pid`, `sid`, password w
 Sealing keys are deliberately distinct from signing keys to discourage key reuse. The version 3 API is available
 from `org.paseto4j.paserk.version3.Paserk`.
 
+## Validation policies
+
+Callers that need uniform checks before decryption or verification can attach an immutable, thread-safe
+`ValidationPolicy` instead of repeating checks at every version entry point:
+
+```java
+import org.paseto4j.commons.ValidationPolicy;
+import org.paseto4j.commons.Version;
+import org.paseto4j.commons.Purpose;
+
+ValidationPolicy policy = ValidationPolicy.builder()
+    .allowVersions(Version.V4)
+    .allowPurposes(Purpose.PURPOSE_LOCAL)
+    .maxTokenLength(4096)
+    .expectFooter("my-app")
+    .requireImplicitAssertion()
+    .validateTemporalClaims()
+    .maxClockSkew(Duration.ofSeconds(30))
+    .requireClaims("exp")
+    .build();
+
+String payload = Paseto.decrypt(key, token, footer, implicitAssertion, policy);
+```
+
+Every version (`v1`-`v4`) exposes `decrypt`/`parse` overloads accepting a policy, and every PASERK type accepts
+one via `decode(paserk, policy)`. Structural validation (header, segment count, canonical base64url, length
+limits) always runs before any cryptographic operation. Failures raise
+`org.paseto4j.commons.ValidationException` carrying a stable `FailureCode` and `ValidationPhase`; messages
+never contain key material, plaintext payloads, or complete tokens. Authentication failures are reported as
+`FailureCode.AUTHENTICATION_FAILED`, distinct from policy rejections. Policies without claim rules leave
+non-JSON payloads untouched; the existing policy-less entry points are unchanged.
+
 ## Usage
 
 For usage see the `examples` project which shows how to use Paseto4j in action.
@@ -142,7 +174,7 @@ For usage see the `examples` project which shows how to use Paseto4j in action.
 
 Why use this library over the other Java implementations?
 
-- No dependency on any JSON library. It is a lightweight library supporting the basic Paseto operations. The rest is up-to-you.
+- Lightweight: the only dependencies are a JSON library (used for claim validation) and, per version module, the required cryptographic provider. The rest is up-to-you.
 - Easy to use API.
 - Available on Maven Central
 

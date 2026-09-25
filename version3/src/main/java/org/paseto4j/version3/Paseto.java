@@ -9,6 +9,7 @@ import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 
 import org.paseto4j.commons.SecretKey;
+import org.paseto4j.commons.ValidationPolicy;
 
 public class Paseto {
 
@@ -46,6 +47,32 @@ public class Paseto {
   public static String decrypt(
       SecretKey key, String signedMessage, String footer, String implicitAssertion) {
     return PasetoLocal.decrypt(key, signedMessage, footer, implicitAssertion);
+  }
+
+  /**
+   * Decrypts after validating the token against the given {@link ValidationPolicy}.
+   *
+   * @throws org.paseto4j.commons.ValidationException when the policy rejects the token or
+   *     authentication fails
+   */
+  public static String decrypt(
+      SecretKey key, String signedMessage, String footer, ValidationPolicy policy) {
+    return decrypt(key, signedMessage, footer, "", policy);
+  }
+
+  /**
+   * Decrypts after validating the token against the given {@link ValidationPolicy}.
+   *
+   * @throws org.paseto4j.commons.ValidationException when the policy rejects the token or
+   *     authentication fails
+   */
+  public static String decrypt(
+      SecretKey key,
+      String signedMessage,
+      String footer,
+      String implicitAssertion,
+      ValidationPolicy policy) {
+    return PasetoLocal.decrypt(key, signedMessage, footer, implicitAssertion, policy);
   }
 
   /**
@@ -99,5 +126,31 @@ public class Paseto {
       ECPublicKey publicKey, String signedMessage, String footer, String implicitAssertion)
       throws SignatureException {
     return PasetoPublic.parse(publicKey, signedMessage, footer, implicitAssertion);
+  }
+
+  /**
+   * Verifies after validating the token against the given {@link ValidationPolicy}.
+   *
+   * @throws org.paseto4j.commons.ValidationException when the policy rejects the token or
+   *     authentication fails
+   */
+  public static String parse(
+      ECPublicKey publicKey, String signedMessage, String footer, ValidationPolicy policy) {
+    return parse(publicKey, signedMessage, footer, "", policy);
+  }
+
+  /**
+   * Verifies after validating the token against the given {@link ValidationPolicy}.
+   *
+   * @throws org.paseto4j.commons.ValidationException when the policy rejects the token or
+   *     authentication fails
+   */
+  public static String parse(
+      ECPublicKey publicKey,
+      String signedMessage,
+      String footer,
+      String implicitAssertion,
+      ValidationPolicy policy) {
+    return PasetoPublic.parse(publicKey, signedMessage, footer, implicitAssertion, policy);
   }
 }

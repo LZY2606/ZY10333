@@ -21,9 +21,14 @@ import org.bouncycastle.asn1.x9.X9ECParameters;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.math.ec.ECPoint;
 import org.paseto4j.commons.ByteUtils;
+import org.paseto4j.commons.ClaimValidator;
+import org.paseto4j.commons.FailureCode;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationException;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoPublic {
 
@@ -80,8 +85,57 @@ class PasetoPublic {
     // 1 and 2
     Token token = new Token(signedMessage, V3, PURPOSE_PUBLIC, footer);
 
+    return doParse(
+        publicKey,
+        token.header(),
+        getUrlDecoder().decode(token.getPayload()),
+        footer.getBytes(UTF_8),
+        implicitAssertion.getBytes(UTF_8));
+  }
+
+  /**
+   * Verifies after validating the token against {@code policy}; validation runs before any
+   * cryptographic operation and claim rules are enforced on the verified payload.
+   */
+  static String parse(
+      ECPublicKey publicKey,
+      String signedMessage,
+      String footer,
+      String implicitAssertion,
+      ValidationPolicy policy) {
+    requireNonNull(publicKey);
+    requireNonNull(signedMessage);
+    requireNonNull(policy);
+
+    ValidatedToken token = ValidatedToken.parse(signedMessage, policy);
+    token.verifyFooter(footer);
+    policy.verifyImplicitAssertion(implicitAssertion, true);
+
+    String payload;
+    try {
+      payload =
+          doParse(
+              publicKey,
+              token.header(),
+              token.payload(),
+              (footer == null ? "" : footer).getBytes(UTF_8),
+              (implicitAssertion == null ? "" : implicitAssertion).getBytes(UTF_8));
+    } catch (SignatureException e) {
+      throw new ValidationException(
+          FailureCode.AUTHENTICATION_FAILED, "token authentication failed", e);
+    }
+    ClaimValidator.validate(payload, policy);
+    return payload;
+  }
+
+  private static String doParse(
+      ECPublicKey publicKey,
+      byte[] header,
+      byte[] sm,
+      byte[] footerBytes,
+      byte[] implicitAssertionBytes)
+      throws SignatureException {
     // 3
-    byte[] sm = getUrlDecoder().decode(token.getPayload());
     byte[] signature = Arrays.copyOfRange(sm, sm.length - 96, sm.length);
     byte[] message = Arrays.copyOfRange(sm, 0, sm.length - 96);
 
@@ -89,7 +143,7 @@ class PasetoPublic {
     byte[] pk = toCompressed(publicKey);
     byte[] m2 =
         PreAuthenticationEncoder.encode(
-            pk, token.header(), message, footer.getBytes(UTF_8), implicitAssertion.getBytes(UTF_8));
+            pk, header, message, footerBytes, implicitAssertionBytes);
 
     // 5
     verifySignature(publicKey, m2, signature);

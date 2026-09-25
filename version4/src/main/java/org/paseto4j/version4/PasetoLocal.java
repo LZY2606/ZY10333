@@ -15,10 +15,16 @@ import static org.paseto4j.commons.Version.V4;
 
 import java.security.MessageDigest;
 import java.util.Arrays;
+import org.paseto4j.commons.ClaimValidator;
+import org.paseto4j.commons.FailureCode;
+import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.SecretKey;
 import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationException;
+import org.paseto4j.commons.ValidationPolicy;
 
 public class PasetoLocal {
   private PasetoLocal() {}
@@ -80,8 +86,56 @@ public class PasetoLocal {
 
     Token pasetoToken = new Token(token, V4, PURPOSE_LOCAL, footer);
 
+    return doDecrypt(
+        key,
+        pasetoToken.header(),
+        getUrlDecoder().decode(pasetoToken.getPayload()),
+        footer.getBytes(UTF_8),
+        implicitAssertion.getBytes(UTF_8));
+  }
+
+  /**
+   * Decrypts after validating the token against {@code policy}; validation runs before any
+   * cryptographic operation and claim rules are enforced on the decrypted payload.
+   */
+  static String decrypt(
+      SecretKey key,
+      String token,
+      String footer,
+      String implicitAssertion,
+      ValidationPolicy policy) {
+    requireNonNull(key);
+    requireNonNull(token);
+    requireNonNull(policy);
+
+    ValidatedToken pasetoToken = ValidatedToken.parse(token, policy);
+    pasetoToken.verifyFooter(footer);
+    policy.verifyImplicitAssertion(implicitAssertion, true);
+
+    String payload;
+    try {
+      payload =
+          doDecrypt(
+              key,
+              pasetoToken.header(),
+              pasetoToken.payload(),
+              (footer == null ? "" : footer).getBytes(UTF_8),
+              (implicitAssertion == null ? "" : implicitAssertion).getBytes(UTF_8));
+    } catch (IllegalStateException | PasetoException e) {
+      throw new ValidationException(
+          FailureCode.AUTHENTICATION_FAILED, "token authentication failed", e);
+    }
+    ClaimValidator.validate(payload, policy);
+    return payload;
+  }
+
+  private static String doDecrypt(
+      SecretKey key,
+      byte[] header,
+      byte[] nct,
+      byte[] footerBytes,
+      byte[] implicitAssertionBytes) {
     // 4
-    byte[] nct = getUrlDecoder().decode(pasetoToken.getPayload());
     byte[] nonce = Arrays.copyOfRange(nct, 0, 32);
     byte[] t = Arrays.copyOfRange(nct, nct.length - 32, nct.length);
     byte[] c = Arrays.copyOfRange(nct, 32, nct.length - 32);
@@ -96,11 +150,7 @@ public class PasetoLocal {
       // 6
       byte[] preAuth =
           PreAuthenticationEncoder.encode(
-              pasetoToken.header(),
-              nonce,
-              c,
-              footer.getBytes(UTF_8),
-              implicitAssertion.getBytes(UTF_8));
+              header, nonce, c, footerBytes, implicitAssertionBytes);
 
       // 7
       byte[] t2 = CryptoFunctions.blake2b(32, preAuth, ak);

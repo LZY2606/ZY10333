@@ -15,9 +15,14 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import org.paseto4j.commons.ByteUtils;
+import org.paseto4j.commons.ClaimValidator;
+import org.paseto4j.commons.FailureCode;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationException;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoPublic {
 
@@ -60,13 +65,52 @@ class PasetoPublic {
     // 1 & 2
     Token token = new Token(signedMessage, V1, PURPOSE_PUBLIC, footer);
 
+    return doParse(
+        publicKey,
+        token.header(),
+        getUrlDecoder().decode(token.getPayload()),
+        footer.getBytes(UTF_8));
+  }
+
+  /**
+   * Verifies after validating the token against {@code policy}; validation runs before any
+   * cryptographic operation and claim rules are enforced on the verified payload.
+   */
+  static String parse(
+      RSAPublicKey publicKey, String signedMessage, String footer, ValidationPolicy policy) {
+    requireNonNull(publicKey);
+    requireNonNull(signedMessage);
+    requireNonNull(policy);
+
+    ValidatedToken token = ValidatedToken.parse(signedMessage, policy);
+    token.verifyFooter(footer);
+    policy.verifyImplicitAssertion("", false);
+
+    String payload;
+    try {
+      payload =
+          doParse(
+              publicKey,
+              token.header(),
+              token.payload(),
+              (footer == null ? "" : footer).getBytes(UTF_8));
+    } catch (SignatureException e) {
+      throw new ValidationException(
+          FailureCode.AUTHENTICATION_FAILED, "token authentication failed", e);
+    }
+    ClaimValidator.validate(payload, policy);
+    return payload;
+  }
+
+  private static String doParse(
+      RSAPublicKey publicKey, byte[] header, byte[] sm, byte[] footerBytes)
+      throws SignatureException {
     // 3
-    byte[] sm = getUrlDecoder().decode(token.getPayload());
     byte[] signature = Arrays.copyOfRange(sm, sm.length - 256, sm.length);
     byte[] message = Arrays.copyOfRange(sm, 0, sm.length - 256);
 
     // 4
-    byte[] m2 = PreAuthenticationEncoder.encode(token.header(), message, footer.getBytes(UTF_8));
+    byte[] m2 = PreAuthenticationEncoder.encode(header, message, footerBytes);
 
     // 5
     verifySignature(publicKey, m2, signature);

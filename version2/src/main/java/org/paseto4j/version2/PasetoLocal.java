@@ -16,11 +16,16 @@ import com.goterl.lazysodium.interfaces.AEAD;
 import java.util.Arrays;
 import java.util.Base64;
 
+import org.paseto4j.commons.ClaimValidator;
+import org.paseto4j.commons.FailureCode;
 import org.paseto4j.commons.PasetoException;
 import org.paseto4j.commons.PreAuthenticationEncoder;
 import org.paseto4j.commons.SecretKey;
 import org.paseto4j.commons.Token;
 import org.paseto4j.commons.TokenOut;
+import org.paseto4j.commons.ValidatedToken;
+import org.paseto4j.commons.ValidationException;
+import org.paseto4j.commons.ValidationPolicy;
 
 class PasetoLocal {
 
@@ -87,15 +92,50 @@ class PasetoLocal {
     // 1 and 2
     Token pasetoToken = new Token(token, V2, PURPOSE_LOCAL, footer);
 
+    return doDecrypt(
+        key,
+        pasetoToken.header(),
+        Base64.getUrlDecoder().decode(pasetoToken.getPayload()),
+        footer.getBytes(UTF_8));
+  }
+
+  /**
+   * Decrypts after validating the token against {@code policy}; validation runs before any
+   * cryptographic operation and claim rules are enforced on the decrypted payload.
+   */
+  static String decrypt(SecretKey key, String token, String footer, ValidationPolicy policy) {
+    requireNonNull(key);
+    requireNonNull(token);
+    requireNonNull(policy);
+
+    ValidatedToken pasetoToken = ValidatedToken.parse(token, policy);
+    pasetoToken.verifyFooter(footer);
+    policy.verifyImplicitAssertion("", false);
+
+    String payload;
+    try {
+      payload =
+          doDecrypt(
+              key,
+              pasetoToken.header(),
+              pasetoToken.payload(),
+              (footer == null ? "" : footer).getBytes(UTF_8));
+    } catch (PasetoException e) {
+      throw new ValidationException(
+          FailureCode.AUTHENTICATION_FAILED, "token authentication failed", e);
+    }
+    ClaimValidator.validate(payload, policy);
+    return payload;
+  }
+
+  private static String doDecrypt(SecretKey key, byte[] header, byte[] ct, byte[] footerBytes) {
     // 3
-    byte[] ct = Base64.getUrlDecoder().decode(pasetoToken.getPayload());
     byte[] nonce = Arrays.copyOfRange(ct, 0, AEAD.XCHACHA20POLY1305_IETF_NPUBBYTES);
     byte[] encryptedMessage =
         Arrays.copyOfRange(ct, AEAD.XCHACHA20POLY1305_IETF_NPUBBYTES, ct.length);
 
     // 4
-    byte[] preAuth =
-        PreAuthenticationEncoder.encode(pasetoToken.header(), nonce, footer.getBytes(UTF_8));
+    byte[] preAuth = PreAuthenticationEncoder.encode(header, nonce, footerBytes);
 
     // 5 - XChaCha20Poly1305 decryption using Lazysodium
     byte[] message = new byte[encryptedMessage.length - AEAD.XCHACHA20POLY1305_IETF_ABYTES];
